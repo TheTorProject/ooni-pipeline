@@ -1,0 +1,251 @@
+
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>reprocess-report.md</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.3.0/milligram.min.css">
+<link rel="preconnect" href="https://fonts.gstatic.com">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+
+html, body {
+margin: 0;
+font-family: "Fira Sans", sans-serif;
+font-weight: 400;
+}
+.header {
+padding: 2rem;
+background-color: #0588cb;
+color: #fff;
+margin-bottom: 2rem;
+}
+a {
+color: #0588cb;
+}
+pre {
+border-left: none !important;
+padding: 0.5rem 1rem;
+}
+a.headerlink {
+color: #868e96
+}
+a.headerlink:hover {
+color: #0588cb;
+}
+div#pagepath { padding-bottom: 1em }
+h1 { font-size: 48px; font-weight: 300; }
+h2 { font-size: 36px; font-weight: 600; }
+h3 { font-size: 28px; font-weight: 600; }
+h4 { font-size: 22px; font-weight: 600; }
+h5 { font-size: 20px; font-weight: 600; }
+h6 { font-size: 20px; font-weight: 600; }
+h7 { font-size: 20px; font-weight: 600; }
+div.toc {
+border: 1px solid #ccc;
+margin: 1em;
+padding: 1em;
+border-radius: 10px;
+font-size: 115%;
+}
+footer {
+background-color: rgb(0, 54, 91);
+padding: 2rem;
+color: #fff;
+font-size: 14px;
+font-family: "Fira Sans", sans-serif;
+margin-top: 2rem;
+}
+.pt-1 {
+padding-top: 0.25rem;
+}
+.pb-2 {
+padding-bottom: 0.5rem;
+}
+.pb-4 {
+padding-bottom: 1rem;
+}
+.footer-section-title {
+font-weight: bold;
+}
+footer a {
+color: #fff;
+opacity: 0.5;
+padding: 2px 0;
+margin: 2px 0;
+}
+footer a:hover {
+color: #fff;
+opacity: 1;
+}
+.button {
+color: #0588cb !important;
+border-color: #0588cb !important;
+}
+.button:hover,.button:focus {
+color: #343a40 !important;
+border-color: #343a40 !important;
+
+}
+.button-small {
+padding: 0 2rem;
+height: 3.5rem;
+line-height: 3.5rem;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="row">
+    <div class="column">
+      <h2>Project documentation</h2>
+    </div>
+  </div>
+</div>
+<div class="container">
+<div id="pagepath"><a href='../index.html'></a> » <a href='/index.html'>docs</a> » <a href=''>reprocess-report.md</a></div><p>This document describes how to reprocess historical data ingesting new features while minimizing resources waste and negative effect on the on-going data processing.</p>
+<p>This document is valid as of May 2019.</p>
+<p>Reading <a href="./pipeline-16.10.md">overall pipeline design document</a> is useful to understand the following text.</p>
+<h4 id="preface">Preface<a class="headerlink" href="#preface" title="Permanent link"> #</a></h4>
+<p>There are a few problems that make reingestion and reprocessing a non-instant and non-trivial process:</p>
+<ul>
+<li>reprocessing <strong>all</strong> the data is slow: fresh data is ingested at ≈1.0 MByte/s. Throughput is measured per CPU core processing autoclaved files. So at least ≈46 CPU-days are needed to ingest 3.8 TB dataset + PostgreSQL <a href="https://github.com/ooni/pipeline/issues/140">may double</a> that estimate.</li>
+<li>rewriting <strong>all</strong> feature tables on reprocessing produces unnecessary <em>PostgreSQL table bloat</em>. Features are deleted from feature tables on reprocessing and re-inserted back instead of the minimal possible update to avoid mistakes caused by incremental computation. Full-bucket <em>update</em> is equivalent to <em>delete + insert</em> as that's the way for PostgreSQL to implement MVCC.</li>
+<li>airflow 1.8 scheduler fails to schedule tasks properly when 2'300 DAGs are started at once to reprocess all the buckets. It starts hogging CPU, that negatively affects both reprocessing speed and ingestion of new data.</li>
+</ul>
+<p>There are a few hacks that make reingestion and reprocessing more "instant" in various cases:</p>
+<ul>
+<li>minimal reprocessing "unit" is an autoclaved file that is 20 MB on average instead of 5.5 GB bucket.</li>
+<li><code>code_ver</code> allows to reprocess files updating just a subset of feature-tables according to <code>min_compat_code_ver</code> instead of updating all of them.</li>
+<li><code>body_sha256</code>, <code>body_simhash</code> and <code>body_text_simhash</code> allow to select a subset of autoclaved files for reprocessing when new blockpage fingerprint is discovered.</li>
+<li>GNU Make can be used to <a href="https://github.com/ooni/sysadmin/blob/8224b4627dd2e16529b98f9907f0fbd280814035/scripts/pipeline-reprocess">run airflow tasks</a> with pre-defined concurrency level to limit pressure on Airflow's scheduler.</li>
+<li><code>SimhashCache</code> fetches subset of <code>sha256(body)</code> to <code>simhash(text(body)), simhash(body)</code> mapping from the MetaDB before reingestion, that speeds reingestion up from 1.0 MB/s to 4.3 MB/s</li>
+<li>one-pass ingestion of streamed json input into <em>separate</em> tables is not trivial. It's achieved maintaining <a href="https://github.com/ooni/pipeline/blob/1b2688d75a7abc09e446a7d965dd8011f5b5564d/af/shovel/oonipl/pg.py">write buffer</a> for each table and flushing the buffer with <code>COPY</code> when few megabytes of data are accumulated.</li>
+</ul>
+<p>Currently following fingerprints to <em>"confirm"</em> cases of network interference are implemented: HTTP Body substring, HTTP Header prefix, HTTP Header value. NB: HTTP Bodies are <em>not</em> stored in the MetaDB, so those are not feature-based fingerprints.</p>
+<h4 id="case-new-html-blockpage-fingerprint">Case: new HTML blockpage fingerprint<a class="headerlink" href="#case-new-html-blockpage-fingerprint" title="Permanent link"> #</a></h4>
+<p>Identify new blockpage, e.g. one from <a href="https://explorer.ooni.torproject.org/measurement/20180126T000430Z_AS8449_pk15Mr2LgOhNOk9NfI2EarhUAM64DZ3R85nh4Z3q2m56hflUGh?input=http:%2F%2Farchive.org">homeline.kg ISP</a> coming from <a href="https://github.com/ooni/pipeline/issues/122">#122</a>.</p>
+<p>Identify corresponding measurement and <code>msm_no</code>, e.g. with <code>select * from report join measurement using (report_no) join input using (input_no) where report_id = '20180126T000430Z_AS8449_pk15Mr2LgOhNOk9NfI2EarhUAM64DZ3R85nh4Z3q2m56hflUGh' and input = 'http://archive.org'</code>.</p>
+<p>Identify, if possible, if the blockpage is a <em>static</em> or a <em>dynamic</em> one. Static page usually does not include URL of blocked page in HTML body while dynamic does. For a static blockpage <code>body_sha256</code> can be reliably used to identify all the measurements referencing it. For a dynamic blockpage low hamming distance between the blockpage and <code>body_simhash</code> (or <code>body_text_simhash</code>) of the measurement can be used to reliably identify most of the candidates containing the blockpage. E.g. <a href="https://gist.github.com/darkk/e2b2762c4fe053a3cf8a299520f0490e">Cloudflare blockpage cluster</a> (see <code>In[18]</code>) has diameter of 15 for 64-bit <code>body_simhash</code>. ISP blockpages are often static as it's significantly cheaper to serve them from computational perspective. CDN server-side blockpages are often dynamic as they include some small bits of tracking those are useful for customer support.</p>
+<p>Sidenote: having a blockpage at hand is an opportunity to mine blocked URLs showing same blockpage and mine more blockpages, as different ISPs may show different blockpage for the same blocked URL.</p>
+<p>Then <em>human intelligence task</em> should be solved to extract a fingerprint for the blockpage. The fingerprint should be added to the set of fingerprints and <code>openobservatory/pipeline-shovel</code> should be rolled out before reprocessing of historical data.</p>
+<p>If the blockpage is a static one, there is a fast-path alternative to reprocessing: it's possible to update MetaDB directly without actual reprocessing as SHA256 collision is very unlikely and <code>body_sha256</code> may be used as a feature <em>identifying</em> the blockpage server (at the current stage of OONI Methodology development). See feature-based fingerprint case for more on the fast-path. Keep in mind that the HTTP Body substring fingerprint is still <em>derived</em> from the body, so avoiding full-dataset reprocessing may lead to false negatives.</p>
+<p>Overall steps needed to mark existing &amp; future measurements are:</p>
+<ul>
+<li>pause ongoing ingestion and ensure that there are no <code>meta_pg</code> TaskInstances running</li>
+<li>update <code>fingerprint</code> table in <a href="https://github.com/ooni/pipeline/blob/065cccdfeb531e93a22d2aacc05ec05e990f99ee/af/oometa/">the database schema</a> following <a href="https://github.com/ooni/pipeline/blob/065cccdfeb531e93a22d2aacc05ec05e990f99ee/af/oometa/003-fingerprints.install.sql#L31-L62">an example</a> and <a href="https://github.com/ooni/sysadmin/blob/4defab8e92a2e53e2679a17214162ed058089e7f/ansible/deploy-pipeline-ddl.yml">roll it out</a>. The fingerprints are stored in the schema to generate <code>fingerprint_no serial</code>.</li>
+<li>create a temporary table having <code>msm_no</code> of the measurements matching the fingerprint <em>with confidence</em> according to the <em>derived</em> features existing in database (e.g. <code>select msm_no from http_request where body_sha256 = '\x833b2fb8887eed1c0d496670148efa8b6a6e65b89f8df42dbd716464e3cf47a6'</code> for static blockpages)</li>
+<li>insert those <code>msm_no</code> together with matching <code>fingerprint_no</code> into <code>http_request_fp</code> table as if those were actually ingested by <code>centrifugation.py</code></li>
+<li>update <code>anomaly</code> and <code>confirmed</code> flags in <code>measurement</code> table for the affected measurement according to the logic codified in <code>calc_measurement_flags()</code></li>
+<li>update <code>centrifugation.py</code>: 1) set up-to-date <code>fingerprint</code> table checksum in <code>HttpRequestFPFeeder.__init__()</code>, 2) bump global <code>CODE_VER</code> and <code>HttpRequestFPFeeder.min_compat_code_ver</code> (and only it, to avoid rewriting other tables)</li>
+<li>roll out <code>openobservatory/pipeline-shovel</code> and unpause data ingestion</li>
+<li>reprocess all the previous buckets under GNU Make control</li>
+</ul>
+<p>It's possible to try to use <code>body_simhash</code> to reprocess <em>likely-affected</em> buckets first to reduce time-to-publication latency, but that's out of the scope of the document.</p>
+<h4 id="case-new-feature-based-fingerprint">Case: new feature-based fingerprint<a class="headerlink" href="#case-new-feature-based-fingerprint" title="Permanent link"> #</a></h4>
+<p>The goal of special handling of feature-based case is that the case does not depend on voluminous HTTP bodies. So the flags for the dataset can be updated within couple of hours given quite modest computing resources (4 vCPU, 16 GiB RAM, HDD) compared to ≈46 CPU-days needed ingest whole dataset from scratch.</p>
+<p>Examples are <code>Location</code> redirects and DNS-based redirects to blockpage servers.</p>
+<p>E.g. aforementioned <a href="https://explorer.ooni.torproject.org/measurement/20180126T000430Z_AS8449_pk15Mr2LgOhNOk9NfI2EarhUAM64DZ3R85nh4Z3q2m56hflUGh?input=http:%2F%2Farchive.org">homeline.kg ISP</a> actually serves redirect for a blocked http URI with no <code>Date</code> and no <code>Server</code> headers that clearly looks like injected HTTP redirect.</p>
+<p>This case is almost the same one as the case of a static blockpage: the MetaDB has all the data to follow fast-path updating measurement metadata (<code>http_request_fp</code> table, <code>confirmed</code> and <code>anomaly</code> flags, etc.) with direct DB queries. The downside of fast-path is that it'll lead to duplication of logic between the queries and <code>centrifugation.py</code> that may (by mistake) lead to inconsistencies if the logic is not perfectly equivalent.</p>
+<p>Overall steps needed to mark existing &amp; future measurements are the same as for HTML blockpage fingerprint with small alterations:</p>
+<ul>
+<li><em>(same)</em> pause ongoing ingestion and ensure that there are no <code>meta_pg</code> TaskInstances running</li>
+<li><em>(same)</em> update <code>fingerprint</code> table in <a href="https://github.com/ooni/pipeline/blob/065cccdfeb531e93a22d2aacc05ec05e990f99ee/af/oometa/">the database schema</a> following <a href="https://github.com/ooni/pipeline/blob/065cccdfeb531e93a22d2aacc05ec05e990f99ee/af/oometa/003-fingerprints.install.sql#L31-L62">an example</a> and <a href="https://github.com/ooni/sysadmin/blob/4defab8e92a2e53e2679a17214162ed058089e7f/ansible/deploy-pipeline-ddl.yml">roll it out</a>. The fingerprints are stored in the schema to generate <code>fingerprint_no serial</code>.</li>
+<li>create a temporary table having <code>msm_no</code> of the measurements matching the fingerprint <em>perfectly</em> according to features existing in database (e.g. <code>select msm_no from http_request where headers-&gt;&gt;'Location' = 'http://homeline.kg/access/blockpage.html'</code>, keep in mind that keys of headers are case-sensitive)</li>
+<li><em>(same)</em> insert those <code>msm_no</code> together with matching <code>fingerprint_no</code> into <code>http_request_fp</code> table as if those were actually ingested by <code>centrifugation.py</code></li>
+<li><em>(same)</em> update <code>anomaly</code> and <code>confirmed</code> flags in <code>measurement</code> table for the affected measurement according to the logic codified in <code>calc_measurement_flags()</code></li>
+<li>update <code>centrifugation.py</code>: set up-to-date <code>fingerprint</code> table checksum in <code>HttpRequestFPFeeder.__init__()</code>. There is no need to bump <code>CODE_VER</code> for feature-based fingerprints as we are 100% confident that reprocessing is not needed and ongoing data processing is paused.</li>
+<li><em>(same)</em> roll out <code>openobservatory/pipeline-shovel</code> and unpause data ingestion</li>
+<li>there is no need for reprocessing as there is no possibility for false negative here</li>
+</ul>
+<p><em>A temporary table</em> is not necessary a result of <code>CREATE TEMPORARY TABLE</code>, it may also be a query executed on a read-only replica with faster disk drives with the output of the query directed to a local file that becomes <code>UNLOGGED</code> table on a master via out-of-band data transfer or via <em>Foreign Data Wrapper</em>.</p>
+<p>Unfortunately, it's not trivial to give a concrete example of the queries as these examples have to be kept in-sync with the rest of the code and, what's more important, different cardinality of the tables may need different strategies for UPDATE. E.g. <a href="https://github.com/ooni/pipeline/pull/144#issuecomment-483365330">CREATE TABLE + rename</a> strategy may be order of magnitude more performant than <code>UPDATE</code> when the UPDATE touches <em>many</em> rows (it was touching ≈5% of rows in the case).</p>
+<h4 id="case-new-feature-table">Case: new feature table<a class="headerlink" href="#case-new-feature-table" title="Permanent link"> #</a></h4>
+<p>The rule of thumb is: if you are not going to use the extracted features for search or aggregation, you should rather consider leaving JSON as-is without bloating the MetaDB. Maintained table should be an asset, not just a liability of maintenance for the sake of maintenance.</p>
+<p>One may want to use <a href="https://github.com/ooni/pipeline/commit/902e6751340dd515096214f74c739751c9ddca55">commit adding <code>vanilla_tor</code> stats</a> for inspiration, but the code evolved a bit since than.</p>
+<ul>
+<li>Add new feature table. Avoid foreign keys, those are very slow to verify during batch ingestion (as of PostgreSQL 9.6).</li>
+<li>Bump <code>CODE_VER</code>, set <code>min_compat_code_ver</code> for the new feeder</li>
+<li><code>TheFeeder.row()</code> creates a string that is suitable for sending to the table via <code>COPY</code></li>
+<li><code>TheFeeder.pop()</code> removes fields from the JSON object those are completely ingested by the feeder and should NOT be considered a part of the <em>residual</em></li>
+<li>test, deploy, reprocess all (or the affected) buckets under GNU Make control</li>
+</ul>
+<p>One may save significant amount of CPU time marking old <em>autoclaved</em> files as already processed by the new version of code bumping their corresponding <code>code_ver</code> in the database. It may be useful in a case when a feature has to be extracted <strong>only(!)</strong> from a known subset of reports, so the reports that have no data on the specific feature may be skipped safely. Example is extracting a feature of a "low-volume" test. E.g. <code>web_connectivity</code> test takes 99.4% of data volume of 2019Q1, so <em>any</em> other test is a low-volume one. Another example is a extracting a feature that was shipped as a part of some specific <code>software</code> version, so <code>autoclaved</code> having no records coming from the new software may be manually labeled with a newer <code>code_ver</code> and skipped safely.</p>
+<p>For example if you were to need to reprocess only measurements for <code>"test_name": "telegram"</code>, you could run the following query on the db:</p>
+<div class="codehilite"><pre><span></span>UPDATE autoclaved SET code_ver = 6 WHERE code_ver = 5 AND autoclaved_no IN (
+    SELECT autoclaved_no FROM autoclaved WHERE autoclaved_no NOT IN (
+        SELECT DISTINCT autoclaved_no FROM report WHERE test_name = &#39;telegram&#39;));
+</pre></div>
+
+
+<p>Assuming the current code_ver is 5 and the next code_ver is going to be 6, as per https://github.com/ooni/pipeline/pull/177.</p>
+<h4 id="case-adding-new-feature-to-existing-table">Case: adding new feature to existing table<a class="headerlink" href="#case-adding-new-feature-to-existing-table" title="Permanent link"> #</a></h4>
+<p>Let's use <a href="https://github.com/ooni/pipeline/commit/8e14b20ec368572c0bb831fb958bcc70eb9108a6">commit adding <code>body_simhash</code> extraction</a> as an example. Things to do are the following:</p>
+<ul>
+<li>Add new feature as a nullable column. Adding a <code>NOT NULL</code> column will trigger an early table rewrite that is waste of CPU and Disk IO bandwidth.</li>
+<li>Bump <code>CODE_VER</code></li>
+<li>Bump <code>min_compat_code_ver</code> to the new value of <code>CODE_VER</code> for affected "feeders" (<code>HttpRequestFeeder</code> and <code>HttpControlFeeder</code> in this case)</li>
+<li>Append new feature columns to <code>columns</code></li>
+<li>Write code to extract the needed feature for <code>TheFeeder.row()</code>, drop those fields in <code>TheFeeder.pop()</code> (if needed), test it and deploy.</li>
+<li>Reprocess all (or the affected) buckets under GNU Make control.</li>
+<li>Alter the feature column to be <code>NOT NULL</code> if needed.</li>
+</ul>
+<h4 id="marking-autoclaved-files-for-reprocessing">Marking autoclaved files for reprocessing<a class="headerlink" href="#marking-autoclaved-files-for-reprocessing" title="Permanent link"> #</a></h4>
+<p>The <em>autoclaved</em> files are selected for reingestion and reprocessing based on their <code>code_ver</code>. If <code>autoclaved.code_ver</code> matches <code>centrifugation.py:CODE_VER</code> then the file is skipped altogether (file is not read and decompressed, json is not parsed). If <code>autoclaved.code_ver</code> is <em>compatible</em> with <code>Feeder.min_compat_code_ver</code> (greater-equal-than) then the corresponding PostgreSQL table is not re-written during a centrifugation pass. So it can be used to reduce amount of burned CPU and database disk IO.</p>
+<p><em>autoclaved</em> file may be marked with <code>code_ver</code> equal to 0 (<code>CODE_VER_REPROCESS</code>) to force reprocessing of all the feature-tables for this file. There should be no reasons for that besides, maybe, clean-up after a manual database modifications.</p>
+<p>Reingestion is different from reprocessing as it may handle changes to autoclaved files themselves and update <code>autoclaved</code>, <code>report</code>, <code>measurement</code> tables accordingly. The easiest way to force reingestion manually is to set <code>autoclaved.file_sha1</code> to all-zeros of something like <code>digest('', 'sha1')</code>. One of the possible reasons for that is <a href="./delete-report.md">report deletion</a>.</p>
+<h4 id="gnu-make-crutch-for-airflow">GNU Make crutch for Airflow<a class="headerlink" href="#gnu-make-crutch-for-airflow" title="Permanent link"> #</a></h4>
+<p>Airflow has an issue in a scheduler, it starts consuming unreasonable amount of resources if there are thousands of <em>running</em> DAGs. So, reprocessing of ≈2300 daily buckets of OONI data has to be micro-managed. One of the usual Linux tools to execute parallel processes is GNU Make, so, it was taken for the <a href="https://github.com/ooni/sysadmin/blob/4defab8e92a2e53e2679a17214162ed058089e7f/scripts/pipeline-reprocess"><code>pipeline-reprocess</code></a> script.</p>
+<p>The way to use the script is the following:</p>
+<ul>
+<li>download it to your $HOME at <code>datacollector.infra.ooni.io</code> running Airflow</li>
+<li>edit <code>PRJ</code> with a slug representing a reprocessing session (ex: https://github.com/ooni/sysadmin/commit/bf9c967da7b2e2cc0c5efca0351cdf679d861b2f#diff-0bd5c245bef1335609715572487a3117)</li>
+<li>choose a way to list buckets-to-reprocess with <code>TYPEOF_DEPS</code></li>
+<li>edit <code>$(PRJ)/...-deps</code> target in the makefile to reflect the desired logic to select buckets to reprocess</li>
+<li>run <code>tmux</code> and <code>./pipeline-reprocess reprocess</code> within tmux session</li>
+</ul>
+<p>The script will execute TaskInstances via <code>airflow run</code> one-by-one within predefined concurrency limits.</p></div>
+<footer class="p-4">
+<div class="container">
+<div class="row">
+<div class="column column-50">
+<div class="pb-2"><img src="https://ooni.org/images/OONI-HorizontalMonochromeInverted.svg" height="32px" /></div>
+<div class="pb-4">Global community measuring internet censorship around the world.</div>
+<div>
+<div>© 2020 Open Observatory of Network Interference (OONI)</div>
+<div><a href="https://github.com/ooni/license">Content available under a Creative Commons license.</a></div>
+</div>
+</div>
+<div class="column column-50">
+<div class="row">
+<div class="column column-30">
+<div class="footer-section-title">About</div>
+<div class="pt-1"><a href="/about/">OONI</a></div>
+<div class="pt-1"><a href="/about/data-policy/">Data Policy</a></div>
+<div class="pt-1"><a href="https://github.com/ooni/license/tree/master/data">Data License</a></div>
+<div class="pt-1"><a href="/about/#contact">Contact</a></div>
+</div>
+<div class="column column-30">
+<div class="footer-section-title">OONI Probe</div>
+<div class="pt-1"><a href="https://ooni.org/install/">Install</a></div>
+<div class="pt-1"><a href="https://ooni.org/nettest/">Tests</a></div>
+<div class="pt-1"><a href="https://github.com/ooni">Source code</a></div>
+<div class="pt-1">
+<a href="https://api.ooni.io/">API</a>
+</div>
+</div>
+<div class="column column-30">
+<div class="footer-section-title">Updates</div>
+<div class="pt-1">
+<a href="/post/">Blog</a>
+</div>
+<div class="pt-1"><a href="https://lists.torproject.org/cgi-bin/mailman/listinfo/ooni-talk">Mailing list</a></div>
+<div class="pt-1"><a href="https://slack.ooni.org/">Slack</a></div>
+<ul class="pt-1 footer-links-social"></ul>
+</div>
+</div>
+</div>
+</div>
+</div>
+</footer></body></html>

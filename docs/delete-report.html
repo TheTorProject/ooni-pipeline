@@ -1,0 +1,257 @@
+
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>delete-report.md</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.3.0/milligram.min.css">
+<link rel="preconnect" href="https://fonts.gstatic.com">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+
+html, body {
+margin: 0;
+font-family: "Fira Sans", sans-serif;
+font-weight: 400;
+}
+.header {
+padding: 2rem;
+background-color: #0588cb;
+color: #fff;
+margin-bottom: 2rem;
+}
+a {
+color: #0588cb;
+}
+pre {
+border-left: none !important;
+padding: 0.5rem 1rem;
+}
+a.headerlink {
+color: #868e96
+}
+a.headerlink:hover {
+color: #0588cb;
+}
+div#pagepath { padding-bottom: 1em }
+h1 { font-size: 48px; font-weight: 300; }
+h2 { font-size: 36px; font-weight: 600; }
+h3 { font-size: 28px; font-weight: 600; }
+h4 { font-size: 22px; font-weight: 600; }
+h5 { font-size: 20px; font-weight: 600; }
+h6 { font-size: 20px; font-weight: 600; }
+h7 { font-size: 20px; font-weight: 600; }
+div.toc {
+border: 1px solid #ccc;
+margin: 1em;
+padding: 1em;
+border-radius: 10px;
+font-size: 115%;
+}
+footer {
+background-color: rgb(0, 54, 91);
+padding: 2rem;
+color: #fff;
+font-size: 14px;
+font-family: "Fira Sans", sans-serif;
+margin-top: 2rem;
+}
+.pt-1 {
+padding-top: 0.25rem;
+}
+.pb-2 {
+padding-bottom: 0.5rem;
+}
+.pb-4 {
+padding-bottom: 1rem;
+}
+.footer-section-title {
+font-weight: bold;
+}
+footer a {
+color: #fff;
+opacity: 0.5;
+padding: 2px 0;
+margin: 2px 0;
+}
+footer a:hover {
+color: #fff;
+opacity: 1;
+}
+.button {
+color: #0588cb !important;
+border-color: #0588cb !important;
+}
+.button:hover,.button:focus {
+color: #343a40 !important;
+border-color: #343a40 !important;
+
+}
+.button-small {
+padding: 0 2rem;
+height: 3.5rem;
+line-height: 3.5rem;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="row">
+    <div class="column">
+      <h2>Project documentation</h2>
+    </div>
+  </div>
+</div>
+<div class="container">
+<div id="pagepath"><a href='../index.html'></a> » <a href='/index.html'>docs</a> » <a href=''>delete-report.md</a></div><p>This document describes, how to remove reports from historical data with minimal resources waste and minimal damage to the
+on-going data processing.</p>
+<p>This document is valid as of February 2019, when the <a href="./pipeline-16.10.md#data-flow">Airflow data processing graph</a> looked like following one:</p>
+<p><img alt="hist_canning DAG" src="./airflow-pipeline.png" /></p>
+<h4 id="modern-buckets">"Modern" buckets<a class="headerlink" href="#modern-buckets" title="Permanent link"> #</a></h4>
+<p>Here is the checklist of places to clean up the report (for buckets &gt;= 2018):</p>
+<ul>
+<li><code>s3://ooni-data-private/archives-raw/yaml/YYYY-MM-DD.tar.gz</code></li>
+<li><code>s3://ooni-data-private/archives-raw/yaml/YYYY-MM-DD.index.json.gz</code></li>
+<li><code>datacollector.infra.ooni.io:/data/ooni/private/reports-tgz/YYYY-MM-DD.index.json.gz</code></li>
+<li><code>s3://ooni-data-private/canned/YYYY-MM-DD/test_name.42.tar.lz4</code></li>
+<li><code>s3://ooni-data-private/canned/YYYY-MM-DD/index.json.gz</code></li>
+<li><code>datacollector.infra.ooni.io:/data/ooni/private/canned/YYYY-MM-DD.index.json.gz</code></li>
+<li><code>s3://ooni-data/autoclaved/jsonl.tar.lz4/YYYY-MM-DD/test_name.42.tar.lz4</code></li>
+<li><code>s3://ooni-data/autoclaved/jsonl.tar.lz4/YYYY-MM-DD/index.json.gz</code></li>
+<li><code>datacollector.infra.ooni.io:/data/ooni/public/autoclaved/YYYY-MM-DD/test_name.42.tar.lz4</code></li>
+<li><code>datacollector.infra.ooni.io:/data/ooni/public/autoclaved/YYYY-MM-DD/index.json.gz</code></li>
+<li><code>s3://ooni-data/autoclaved/jsonl/YYYY-MM-DD/yyyymmddThhmmssZ-ZZ-AS0-test_name-...-probe.json</code></li>
+</ul>
+<h4 id="legacy-buckets">"Legacy" buckets<a class="headerlink" href="#legacy-buckets" title="Permanent link"> #</a></h4>
+<p>Older reports may also(!) be stored in legacy folders and archives under following roots
+in addition to aforementioned places:
+- <code>s3://ooni-data-private/</code>
+- <code>s3://ooni-data/sanitised/</code></p>
+<p>Dealing with legacy data is out of the scope of this document.</p>
+<h4 id="archive-re-compression">Archive re-compression<a class="headerlink" href="#archive-re-compression" title="Permanent link"> #</a></h4>
+<p>Both <code>archives-raw/yaml</code> and <code>canned</code> archives have to be re-compressed deleting affected report files.</p>
+<p>To keep <code>index.json.gz</code> file in-sync with actual archives, <code>delete_canned_report.py</code>
+script has to be used. The script is conceptually a wrapper around
+<code>gzip -d &lt;in/test_name.42.tar.gz | tar --delete ... | gzip &gt;out/test_name.42.tar.gz</code>
+that also maintains <code>index.json.gz</code>.</p>
+<p>Let's assume that:
+- <code>affected.textname</code> lists all report files to delete from archives
+- <code>affected.bucket_date</code> lists all affected buckets
+- all affected <code>autoclaved</code> files were alread removed both from S3 and from datacollector.infra.ooni.io filesystem</p>
+<p>First, <code>reports-tgz</code> (huge, beware of disk usage!) and <code>canned</code> (smaller) archives have to be fetched from private S3 bucket:</p>
+<div class="codehilite"><pre><span></span><span class="nt">user</span><span class="p">@</span><span class="k">datacollector</span><span class="o">:~$</span> <span class="nt">sudo</span> <span class="nt">docker</span> <span class="nt">pull</span> <span class="nt">openobservatory</span><span class="o">/</span><span class="nt">pipeline-shovel</span><span class="p">:</span><span class="nd">latest</span>
+<span class="nt">user</span><span class="p">@</span><span class="k">datacollector</span><span class="o">:~$</span> <span class="nt">sudo</span> <span class="nt">mkdir</span> <span class="o">/</span><span class="nt">data</span><span class="o">/</span><span class="nt">ooni</span><span class="o">/</span><span class="nt">private</span><span class="o">/</span><span class="nt">fix-</span><span class="p">{</span><span class="nt">tgz</span><span class="o">,</span><span class="nt">can</span><span class="p">}</span> <span class="o">&amp;&amp;</span> <span class="nt">sudo</span> <span class="nt">chown</span> <span class="nt">1000</span><span class="p">:</span><span class="nd">1000</span> <span class="o">/</span><span class="nt">data</span><span class="o">/</span><span class="nt">ooni</span><span class="o">/</span><span class="nt">private</span><span class="o">/</span><span class="nt">fix-</span><span class="p">{</span><span class="nt">tgz</span><span class="o">,</span><span class="nt">can</span><span class="p">}</span>
+<span class="nt">user</span><span class="p">@</span><span class="k">datacollector</span><span class="o">:~$</span> <span class="nt">sudo</span> <span class="nt">docker</span> <span class="nt">run</span> <span class="nt">--rm</span> <span class="nt">-ti</span> <span class="nt">--env-file</span><span class="o">=/</span><span class="nt">srv</span><span class="o">/</span><span class="nt">etc</span><span class="o">/</span><span class="nt">af-worker</span><span class="o">/</span><span class="nt">s3_ooni_datacollector</span><span class="p">.</span><span class="nc">env</span> <span class="nt">-u</span> <span class="nt">1000</span><span class="p">:</span><span class="nd">1000</span> <span class="nt">-v</span> <span class="o">/</span><span class="nt">data</span><span class="o">/</span><span class="nt">ooni</span><span class="o">/</span><span class="nt">private</span><span class="o">:/</span><span class="nt">p</span><span class="p">:</span><span class="nd">rw</span> <span class="nt">-v</span> <span class="o">$</span><span class="nt">PWD</span><span class="o">:/</span><span class="nt">opt</span><span class="p">:</span><span class="nd">ro</span> <span class="nt">openobservatory</span><span class="o">/</span><span class="nt">pipeline-shovel</span><span class="p">:</span><span class="nd">latest</span>
+<span class="o">$</span> <span class="nt">aws</span> <span class="nt">s3</span> <span class="nt">sync</span> <span class="nt">s3</span><span class="o">://</span><span class="nt">ooni-data-private</span><span class="o">/</span><span class="nt">archives-raw</span><span class="o">/</span><span class="nt">yaml</span><span class="o">/</span> <span class="o">/</span><span class="nt">p</span><span class="o">/</span><span class="nt">reports-tgz</span><span class="o">/</span>  <span class="nt">--exclude</span> <span class="s1">&#39;*&#39;</span> <span class="o">$(</span><span class="nt">sed</span> <span class="s1">&#39;s,.*,--include &amp;.tar.gz,&#39;</span> <span class="o">/</span><span class="nt">opt</span><span class="o">/</span><span class="nt">affected</span><span class="p">.</span><span class="nc">bucket_date</span><span class="o">)</span>
+<span class="o">$</span> <span class="nt">for</span> <span class="nt">b</span> <span class="nt">in</span> <span class="o">$(</span><span class="nt">cat</span> <span class="o">/</span><span class="nt">opt</span><span class="o">/</span><span class="nt">affected</span><span class="p">.</span><span class="nc">bucket_date</span><span class="o">)</span><span class="p">;</span> <span class="nt">do</span> <span class="nt">for</span> <span class="nt">f</span> <span class="nt">in</span> <span class="o">$(</span><span class="nt">delete_canned_report</span><span class="p">.</span><span class="nc">py</span> <span class="nt">--files-from</span> <span class="o">/</span><span class="nt">opt</span><span class="o">/</span><span class="nt">affected</span><span class="p">.</span><span class="nc">textname</span> <span class="nt">--canned</span> <span class="o">/</span><span class="nt">p</span><span class="o">/</span><span class="nt">canned</span> <span class="nt">--bucket</span> <span class="s2">&quot;$b&quot;</span> <span class="nt">--list</span><span class="o">);</span> <span class="nt">do</span> <span class="nt">test</span> <span class="o">!</span> <span class="nt">-f</span> <span class="o">/</span><span class="nt">p</span><span class="o">/</span><span class="nt">canned</span><span class="o">/</span><span class="s2">&quot;$f&quot;</span> <span class="o">&amp;&amp;</span> <span class="nt">aws</span> <span class="nt">s3</span> <span class="nt">cp</span> <span class="nt">s3</span><span class="o">://</span><span class="nt">ooni-data-private</span><span class="o">/</span><span class="nt">canned</span><span class="o">/</span><span class="s2">&quot;$f&quot;</span> <span class="o">/</span><span class="nt">p</span><span class="o">/</span><span class="nt">canned</span><span class="o">/</span><span class="s2">&quot;$f&quot;</span><span class="o">;</span> <span class="nt">done</span><span class="o">;</span> <span class="nt">done</span>
+</pre></div>
+
+
+<p>Second, the archives have to be cleaned up:</p>
+<div class="codehilite"><pre><span></span>user@datacollector:~$ sudo docker run --rm -ti -u 1000:1000 -v /data/ooni/private:/p:rw -v $PWD:/opt:ro openobservatory/pipeline-shovel:latest
+$ for b in $(cat /opt/affected.bucket_date); do delete_canned_report.py --files-from /opt/affected.textname --reports-tgz /p/reports-tgz --bucket &quot;$b&quot; --dst /p/fix-tgz; done
+$ for b in $(cat /opt/affected.bucket_date); do delete_canned_report.py --files-from /opt/affected.textname --canned /p/canned --bucket &quot;$b&quot; --dst /p/fix-can; done; date
+</pre></div>
+
+
+<p>Third, <code>autoclaved</code> files deleted earlier have to be re-created from <code>canned</code> files:</p>
+<div class="codehilite"><pre><span></span>user@datacollector:~$ sudo docker run --rm -ti -u 1000:1000 -v /data/ooni/private:/p:ro -v /data/ooni/public:/pub:rw -v <span class="nv">$PWD</span>:/opt:ro openobservatory/pipeline-shovel:latest
+$ for b in $(cat /opt/affected.bucket_date); do chmod u+w &quot;/pub/autoclaved/<span class="cp">${</span><span class="n">b</span><span class="cp">}</span>&quot; <span class="err">&amp;&amp;</span> autoclaving.py --canned-root /p/fix-can --bridge-db /p/bridge_db/bridge_db.json --autoclaved-root /pub/autoclaved --missing --start <span class="cp">${</span><span class="n">b</span><span class="cp">}</span>T00:00:00 --end $(date -d &quot;<span class="nv">$b</span> + 1 day&quot; --rfc-3339=date)T00:00:00; done
+</pre></div>
+
+
+<p>Fourth, changed <code>autoclaved</code> files in the affected buckets have to be re-ingested into MetaDB. That's done under GNU <code>make</code> control as Airflow scheduler is not happy about hundreds of DAGs being active. Also, exit-code of the TaskInstances should be inspected to verify that all the buckets are processed correctly:</p>
+<div class="codehilite"><pre><span></span>user@datacollector:~$ tmux
+user@datacollector:~$ ./pipeline-reprocess reprocess
+user@datacollector:~$ ./pipeline-reprocess rc
+</pre></div>
+
+
+<p>Fifth, the <code>autoclaved</code> files should be published to S3 now, API already tries to fetch them as metadata in now updated in the MetaDB:</p>
+<div class="codehilite"><pre><span></span>user@datacollector:~$ sudo docker run --rm -ti --env-file=/srv/etc/af-worker/s3root.env -u 1000:1000 -v /data/ooni/public:/pub:ro -v <span class="nv">$PWD</span>:/opt:ro openobservatory/pipeline-shovel:latest
+$ cd /pub/autoclaved
+$ for b in $(cat /opt/affected.bucket_date); do aws s3 sync <span class="cp">${</span><span class="n">b</span><span class="cp">}</span>/ s3://ooni-data/autoclaved/jsonl.tar.lz4/<span class="cp">${</span><span class="n">b</span><span class="cp">}</span>/; done
+</pre></div>
+
+
+<p>Sixth, archives stored in private S3 bucket are updated:</p>
+<div class="codehilite"><pre><span></span>user@datacollector:~$ sudo docker run --rm -ti --env-file=/srv/etc/af-worker/s3_ooni_datacollector.env -u 1000:1000 -v /data/ooni/private:/p:ro -v <span class="nv">$PWD</span>:/opt:ro openobservatory/pipeline-shovel:latest
+$ cd /p/fix-tgz
+$ for f in *; do aws s3 cp <span class="cp">${</span><span class="n">f</span><span class="cp">}</span> s3://ooni-data-private/archives-raw/yaml/<span class="cp">${</span><span class="n">f</span><span class="cp">}</span>; done
+$ cd /p/fix-can
+$ for b in *; do aws s3 sync <span class="cp">${</span><span class="n">b</span><span class="cp">}</span>/ s3://ooni-data-private/canned/<span class="cp">${</span><span class="n">b</span><span class="cp">}</span>/; done
+</pre></div>
+
+
+<p>At this point <code>VACUUM FULL</code> should be run on MetaDB tables and
+all the previous MetaDB snapshots and WALs should be probably deleted from
+<a href="https://github.com/ooni/sysadmin/issues/272">public MetaDB archive</a>
+depending on reason for report deletion.</p>
+<p>Last, file trees on <code>datacollector</code> should be updated and stale cashes should be purged:</p>
+<div class="codehilite"><pre><span></span><span class="nt">user</span><span class="p">@</span><span class="k">datacollector</span><span class="o">:~$</span> <span class="nt">cd</span> <span class="o">/</span><span class="nt">data</span><span class="o">/</span><span class="nt">ooni</span><span class="o">/</span><span class="nt">private</span><span class="o">/</span><span class="nt">reports-tgz</span><span class="o">/</span>
+<span class="nt">user</span><span class="p">@</span><span class="k">datacollector</span><span class="o">:~$</span> <span class="nt">sudo</span> <span class="nt">rm</span> <span class="o">/</span><span class="nt">data</span><span class="o">/</span><span class="nt">ooni</span><span class="o">/</span><span class="nt">private</span><span class="o">/</span><span class="nt">fix-tgz</span><span class="o">/*</span><span class="p">.</span><span class="nc">tar</span><span class="p">.</span><span class="nc">gz</span>
+<span class="nt">user</span><span class="p">@</span><span class="k">datacollector</span><span class="o">:~$</span> <span class="nt">sudo</span> <span class="nt">mv</span> <span class="o">/</span><span class="nt">data</span><span class="o">/</span><span class="nt">ooni</span><span class="o">/</span><span class="nt">private</span><span class="o">/</span><span class="nt">fix-tgz</span><span class="o">/*</span><span class="p">.</span><span class="nc">index</span><span class="p">.</span><span class="nc">json</span><span class="p">.</span><span class="nc">gz</span> <span class="o">/</span><span class="nt">data</span><span class="o">/</span><span class="nt">ooni</span><span class="o">/</span><span class="nt">private</span><span class="o">/</span><span class="nt">reports-tgz</span><span class="o">/</span>
+<span class="nt">user</span><span class="p">@</span><span class="k">datacollector</span><span class="o">:~$</span> <span class="nt">sudo</span> <span class="nt">rm</span> <span class="o">$(</span><span class="nt">sed</span> <span class="s1">&#39;s,$,.tar.gz,&#39;</span> <span class="o">~/</span><span class="nt">affected</span><span class="p">.</span><span class="nc">bucket_date</span><span class="o">)</span>
+
+<span class="nt">user</span><span class="p">@</span><span class="k">datacollector</span><span class="o">:~$</span> <span class="nt">cd</span> <span class="o">/</span><span class="nt">data</span><span class="o">/</span><span class="nt">ooni</span><span class="o">/</span><span class="nt">private</span><span class="o">/</span><span class="nt">fix-can</span><span class="o">/</span>
+<span class="nt">user</span><span class="p">@</span><span class="k">datacollector</span><span class="o">:~$</span> <span class="nt">for</span> <span class="nt">b</span> <span class="nt">in</span> <span class="o">$(</span><span class="nt">cat</span> <span class="o">~/</span><span class="nt">affected</span><span class="p">.</span><span class="nc">bucket_date</span><span class="o">)</span><span class="p">;</span> <span class="nt">do</span> <span class="nt">sudo</span> <span class="nt">mv</span> <span class="o">$</span><span class="nt">b</span><span class="o">/</span><span class="nt">index</span><span class="p">.</span><span class="nc">json</span><span class="p">.</span><span class="nc">gz</span> <span class="o">/</span><span class="nt">data</span><span class="o">/</span><span class="nt">ooni</span><span class="o">/</span><span class="nt">private</span><span class="o">/</span><span class="nt">canned</span><span class="o">/$</span><span class="nt">b</span><span class="o">/</span><span class="nt">index</span><span class="p">.</span><span class="nc">json</span><span class="p">.</span><span class="nc">gz</span><span class="p">;</span> <span class="nt">done</span>
+<span class="nt">user</span><span class="p">@</span><span class="k">datacollector</span><span class="o">:~$</span> <span class="nt">find</span> <span class="o">.</span> <span class="nt">-type</span> <span class="nt">f</span> <span class="o">|</span> <span class="nt">sed</span> <span class="s1">&#39;s,^,/data/ooni/private/canned/,&#39;</span> <span class="o">|</span> <span class="nt">xargs</span> <span class="nt">sudo</span> <span class="nt">rm</span>
+<span class="nt">user</span><span class="p">@</span><span class="k">datacollector</span><span class="o">:~$</span> <span class="nt">sudo</span> <span class="nt">find</span> <span class="o">.</span> <span class="nt">-type</span> <span class="nt">f</span> <span class="nt">-delete</span>
+<span class="nt">user</span><span class="p">@</span><span class="k">datacollector</span><span class="o">:~$</span> <span class="nt">sudo</span> <span class="nt">rmdir</span> <span class="o">*</span>
+
+<span class="nt">user</span><span class="p">@</span><span class="k">datacollector</span><span class="o">:~$</span> <span class="nt">cd</span> <span class="o">/</span><span class="nt">data</span><span class="o">/</span><span class="nt">ooni</span><span class="o">/</span><span class="nt">private</span><span class="o">/</span><span class="nt">reports-tgz-s3-ls</span><span class="o">/</span>
+<span class="nt">user</span><span class="p">@</span><span class="k">datacollector</span><span class="o">:~$</span> <span class="nt">sudo</span> <span class="nt">rm</span> <span class="o">$(</span><span class="nt">sed</span> <span class="s1">&#39;s,$,.json.gz,&#39;</span> <span class="o">~/</span><span class="nt">affected</span><span class="p">.</span><span class="nc">bucket_date</span><span class="o">)</span>
+
+<span class="nt">user</span><span class="p">@</span><span class="k">datacollector</span><span class="o">:~$</span> <span class="nt">cd</span> <span class="o">/</span><span class="nt">data</span><span class="o">/</span><span class="nt">ooni</span><span class="o">/</span><span class="nt">private</span><span class="o">/</span><span class="nt">canned-s3-ls</span><span class="o">/</span>
+<span class="nt">user</span><span class="p">@</span><span class="k">datacollector</span><span class="o">:~$</span> <span class="nt">sudo</span> <span class="nt">rm</span> <span class="o">$(</span><span class="nt">sed</span> <span class="s1">&#39;s,$,.json.gz,&#39;</span> <span class="o">~/</span><span class="nt">affected</span><span class="p">.</span><span class="nc">bucket_date</span><span class="o">)</span>
+</pre></div>
+
+
+<h4 id="logs">Logs<a class="headerlink" href="#logs" title="Permanent link"> #</a></h4>
+<p>It's possible to estimate if the report was ever accessed or not using logs of:
+- <code>api.ooni.io</code> webserver storing nginx logs
+- <code>s3://ooni-data-logs/</code> storing logs of <code>s3://ooni-data/</code> access</p></div>
+<footer class="p-4">
+<div class="container">
+<div class="row">
+<div class="column column-50">
+<div class="pb-2"><img src="https://ooni.org/images/OONI-HorizontalMonochromeInverted.svg" height="32px" /></div>
+<div class="pb-4">Global community measuring internet censorship around the world.</div>
+<div>
+<div>© 2020 Open Observatory of Network Interference (OONI)</div>
+<div><a href="https://github.com/ooni/license">Content available under a Creative Commons license.</a></div>
+</div>
+</div>
+<div class="column column-50">
+<div class="row">
+<div class="column column-30">
+<div class="footer-section-title">About</div>
+<div class="pt-1"><a href="/about/">OONI</a></div>
+<div class="pt-1"><a href="/about/data-policy/">Data Policy</a></div>
+<div class="pt-1"><a href="https://github.com/ooni/license/tree/master/data">Data License</a></div>
+<div class="pt-1"><a href="/about/#contact">Contact</a></div>
+</div>
+<div class="column column-30">
+<div class="footer-section-title">OONI Probe</div>
+<div class="pt-1"><a href="https://ooni.org/install/">Install</a></div>
+<div class="pt-1"><a href="https://ooni.org/nettest/">Tests</a></div>
+<div class="pt-1"><a href="https://github.com/ooni">Source code</a></div>
+<div class="pt-1">
+<a href="https://api.ooni.io/">API</a>
+</div>
+</div>
+<div class="column column-30">
+<div class="footer-section-title">Updates</div>
+<div class="pt-1">
+<a href="/post/">Blog</a>
+</div>
+<div class="pt-1"><a href="https://lists.torproject.org/cgi-bin/mailman/listinfo/ooni-talk">Mailing list</a></div>
+<div class="pt-1"><a href="https://slack.ooni.org/">Slack</a></div>
+<ul class="pt-1 footer-links-social"></ul>
+</div>
+</div>
+</div>
+</div>
+</div>
+</footer></body></html>

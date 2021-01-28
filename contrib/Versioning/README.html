@@ -1,0 +1,225 @@
+
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>README.md</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.3.0/milligram.min.css">
+<link rel="preconnect" href="https://fonts.gstatic.com">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+
+html, body {
+margin: 0;
+font-family: "Fira Sans", sans-serif;
+font-weight: 400;
+}
+.header {
+padding: 2rem;
+background-color: #0588cb;
+color: #fff;
+margin-bottom: 2rem;
+}
+a {
+color: #0588cb;
+}
+pre {
+border-left: none !important;
+padding: 0.5rem 1rem;
+}
+a.headerlink {
+color: #868e96
+}
+a.headerlink:hover {
+color: #0588cb;
+}
+div#pagepath { padding-bottom: 1em }
+h1 { font-size: 48px; font-weight: 300; }
+h2 { font-size: 36px; font-weight: 600; }
+h3 { font-size: 28px; font-weight: 600; }
+h4 { font-size: 22px; font-weight: 600; }
+h5 { font-size: 20px; font-weight: 600; }
+h6 { font-size: 20px; font-weight: 600; }
+h7 { font-size: 20px; font-weight: 600; }
+div.toc {
+border: 1px solid #ccc;
+margin: 1em;
+padding: 1em;
+border-radius: 10px;
+font-size: 115%;
+}
+footer {
+background-color: rgb(0, 54, 91);
+padding: 2rem;
+color: #fff;
+font-size: 14px;
+font-family: "Fira Sans", sans-serif;
+margin-top: 2rem;
+}
+.pt-1 {
+padding-top: 0.25rem;
+}
+.pb-2 {
+padding-bottom: 0.5rem;
+}
+.pb-4 {
+padding-bottom: 1rem;
+}
+.footer-section-title {
+font-weight: bold;
+}
+footer a {
+color: #fff;
+opacity: 0.5;
+padding: 2px 0;
+margin: 2px 0;
+}
+footer a:hover {
+color: #fff;
+opacity: 1;
+}
+.button {
+color: #0588cb !important;
+border-color: #0588cb !important;
+}
+.button:hover,.button:focus {
+color: #343a40 !important;
+border-color: #343a40 !important;
+
+}
+.button-small {
+padding: 0 2rem;
+height: 3.5rem;
+line-height: 3.5rem;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="row">
+    <div class="column">
+      <h2>Project documentation</h2>
+    </div>
+  </div>
+</div>
+<div class="container">
+<div id="pagepath"><a href='../../index.html'></a> » <a href='../index.html'>contrib</a> » <a href='/index.html'>Versioning</a> » <a href=''>README.md</a></div><h3 id="name">NAME<a class="headerlink" href="#name" title="Permanent link"> #</a></h3>
+<p><strong>Versioning</strong> - simplistic take on tracking and applying changes to databases.</p>
+<h3 id="description">DESCRIPTION<a class="headerlink" href="#description" title="Permanent link"> #</a></h3>
+<p>This project strives to provide simple way to manage changes to
+database.</p>
+<p>Instead of making changes on development server, then finding
+differences between production and development, deciding which ones
+should be installed on production, and finding a way to install them -
+you start with writing diffs themselves!</p>
+<h3 id="installation">INSTALLATION<a class="headerlink" href="#installation" title="Permanent link"> #</a></h3>
+<p>To install versioning simply run install.versioning.sql in your database
+(all of them: production, stage, test, devel, ...).</p>
+<h3 id="usage">USAGE<a class="headerlink" href="#usage" title="Permanent link"> #</a></h3>
+<p>In your files with patches to database, put whole logic in single
+transaction, and use _v.* functions - usually _v.register_patch() at
+least to make sure everything is OK.</p>
+<p>For example. Let's assume you have patch files:</p>
+<h4 id="000-basesql">000-base.sql:<a class="headerlink" href="#000-basesql" title="Permanent link"> #</a></h4>
+<div class="codehilite"><pre><span></span>create table users (id serial primary key, username text);
+</pre></div>
+
+
+<h4 id="001-userssql">001-users.sql:<a class="headerlink" href="#001-userssql" title="Permanent link"> #</a></h4>
+<div class="codehilite"><pre><span></span>insert into users (username) values (&#39;depesz&#39;);
+</pre></div>
+
+
+<p>To change it to use versioning you would change the files, to this
+state:</p>
+<h4 id="000-basesql_1">000-base.sql:<a class="headerlink" href="#000-basesql_1" title="Permanent link"> #</a></h4>
+<div class="codehilite"><pre><span></span>BEGIN;
+select _v.register_patch(&#39;000-base&#39;, NULL, NULL);
+create table users (id serial primary key, username text);
+COMMIT;
+</pre></div>
+
+
+<h4 id="001-userssql_1">001-users.sql:<a class="headerlink" href="#001-userssql_1" title="Permanent link"> #</a></h4>
+<div class="codehilite"><pre><span></span>BEGIN;
+select _v.register_patch(&#39;001-users&#39;, ARRAY[&#39;000-base&#39;], NULL);
+insert into users (username) values (&#39;depesz&#39;);
+COMMIT;
+</pre></div>
+
+
+<p>This will make sure that patch 001-users can only be applied after
+000-base.</p>
+<h3 id="available-functions">AVAILABLE FUNCTIONS<a class="headerlink" href="#available-functions" title="Permanent link"> #</a></h3>
+<h4 id="95vregister_patch-text">_v.register_patch( TEXT )<a class="headerlink" href="#95vregister_patch-text" title="Permanent link"> #</a></h4>
+<p>Registers named patch, or dies if it is already registered.</p>
+<p>Returns integer which is id of patch in _v.patches table - only if it
+succeeded.</p>
+<h4 id="95vregister_patch-text-text">_v.register_patch( TEXT, TEXT[] )<a class="headerlink" href="#95vregister_patch-text-text" title="Permanent link"> #</a></h4>
+<p>Same as _v.register_patch( TEXT ), but checks is all given patches (given as
+array in second argument) are already registered.</p>
+<h4 id="95vregister_patch-text-text-text">_v.register_patch( TEXT, TEXT[], TEXT[] )<a class="headerlink" href="#95vregister_patch-text-text-text" title="Permanent link"> #</a></h4>
+<p>Same as _v.register_patch( TEXT, TEXT[] ), but also checks if there are no conflicts with preexisting patches.</p>
+<p>Third argument is array of names of patches that conflict with current one. So
+if any of them is installed - register_patch will error out.</p>
+<h4 id="95vunregister_patch-text">_v.unregister_patch( TEXT )<a class="headerlink" href="#95vunregister_patch-text" title="Permanent link"> #</a></h4>
+<p>Removes information about given patch from the versioning data.</p>
+<p>It doesn't remove objects that were created by this patch - just removes
+metainformation.</p>
+<h4 id="95vassert_user_is_superuser">_v.assert_user_is_superuser()<a class="headerlink" href="#95vassert_user_is_superuser" title="Permanent link"> #</a></h4>
+<p>Make sure that current patch is being loaded by superuser.</p>
+<p>If it's not - it will raise exception, and break transaction.</p>
+<h4 id="95vassert_user_is_not_superuser">_v.assert_user_is_not_superuser()<a class="headerlink" href="#95vassert_user_is_not_superuser" title="Permanent link"> #</a></h4>
+<p>Make sure that current patch is not being loaded by superuser.</p>
+<p>If it is - it will raise exception, and break transaction.</p>
+<h4 id="95vassert_user_is_one_oftext-text">_v.assert_user_is_one_of(TEXT, TEXT, ... )<a class="headerlink" href="#95vassert_user_is_one_oftext-text" title="Permanent link"> #</a></h4>
+<p>Make sure that current patch is being loaded by one of listed users.</p>
+<p>If <code>current_user</code> is not listed as one of arguments - function will raise
+exception and break the transaction.</p>
+<h3 id="support">SUPPORT<a class="headerlink" href="#support" title="Permanent link"> #</a></h3>
+<p>If you'd like to suggest new functionality or ask anything - please use
+contact information from https://depesz.com/</p></div>
+<footer class="p-4">
+<div class="container">
+<div class="row">
+<div class="column column-50">
+<div class="pb-2"><img src="https://ooni.org/images/OONI-HorizontalMonochromeInverted.svg" height="32px" /></div>
+<div class="pb-4">Global community measuring internet censorship around the world.</div>
+<div>
+<div>© 2020 Open Observatory of Network Interference (OONI)</div>
+<div><a href="https://github.com/ooni/license">Content available under a Creative Commons license.</a></div>
+</div>
+</div>
+<div class="column column-50">
+<div class="row">
+<div class="column column-30">
+<div class="footer-section-title">About</div>
+<div class="pt-1"><a href="/about/">OONI</a></div>
+<div class="pt-1"><a href="/about/data-policy/">Data Policy</a></div>
+<div class="pt-1"><a href="https://github.com/ooni/license/tree/master/data">Data License</a></div>
+<div class="pt-1"><a href="/about/#contact">Contact</a></div>
+</div>
+<div class="column column-30">
+<div class="footer-section-title">OONI Probe</div>
+<div class="pt-1"><a href="https://ooni.org/install/">Install</a></div>
+<div class="pt-1"><a href="https://ooni.org/nettest/">Tests</a></div>
+<div class="pt-1"><a href="https://github.com/ooni">Source code</a></div>
+<div class="pt-1">
+<a href="https://api.ooni.io/">API</a>
+</div>
+</div>
+<div class="column column-30">
+<div class="footer-section-title">Updates</div>
+<div class="pt-1">
+<a href="/post/">Blog</a>
+</div>
+<div class="pt-1"><a href="https://lists.torproject.org/cgi-bin/mailman/listinfo/ooni-talk">Mailing list</a></div>
+<div class="pt-1"><a href="https://slack.ooni.org/">Slack</a></div>
+<ul class="pt-1 footer-links-social"></ul>
+</div>
+</div>
+</div>
+</div>
+</div>
+</footer></body></html>

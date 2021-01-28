@@ -1,0 +1,370 @@
+
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>readme-2.0.0.md</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.3.0/milligram.min.css">
+<link rel="preconnect" href="https://fonts.gstatic.com">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+
+html, body {
+margin: 0;
+font-family: "Fira Sans", sans-serif;
+font-weight: 400;
+}
+.header {
+padding: 2rem;
+background-color: #0588cb;
+color: #fff;
+margin-bottom: 2rem;
+}
+a {
+color: #0588cb;
+}
+pre {
+border-left: none !important;
+padding: 0.5rem 1rem;
+}
+a.headerlink {
+color: #868e96
+}
+a.headerlink:hover {
+color: #0588cb;
+}
+div#pagepath { padding-bottom: 1em }
+h1 { font-size: 48px; font-weight: 300; }
+h2 { font-size: 36px; font-weight: 600; }
+h3 { font-size: 28px; font-weight: 600; }
+h4 { font-size: 22px; font-weight: 600; }
+h5 { font-size: 20px; font-weight: 600; }
+h6 { font-size: 20px; font-weight: 600; }
+h7 { font-size: 20px; font-weight: 600; }
+div.toc {
+border: 1px solid #ccc;
+margin: 1em;
+padding: 1em;
+border-radius: 10px;
+font-size: 115%;
+}
+footer {
+background-color: rgb(0, 54, 91);
+padding: 2rem;
+color: #fff;
+font-size: 14px;
+font-family: "Fira Sans", sans-serif;
+margin-top: 2rem;
+}
+.pt-1 {
+padding-top: 0.25rem;
+}
+.pb-2 {
+padding-bottom: 0.5rem;
+}
+.pb-4 {
+padding-bottom: 1rem;
+}
+.footer-section-title {
+font-weight: bold;
+}
+footer a {
+color: #fff;
+opacity: 0.5;
+padding: 2px 0;
+margin: 2px 0;
+}
+footer a:hover {
+color: #fff;
+opacity: 1;
+}
+.button {
+color: #0588cb !important;
+border-color: #0588cb !important;
+}
+.button:hover,.button:focus {
+color: #343a40 !important;
+border-color: #343a40 !important;
+
+}
+.button-small {
+padding: 0 2rem;
+height: 3.5rem;
+line-height: 3.5rem;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="row">
+    <div class="column">
+      <h2>Project documentation</h2>
+    </div>
+  </div>
+</div>
+<div class="container">
+<div id="pagepath"><a href='../index.html'></a> » <a href='/index.html'>docs</a> » <a href=''>readme-2.0.0.md</a></div><h3 id="open-observatory-pipeline">Open Observatory Pipeline<a class="headerlink" href="#open-observatory-pipeline" title="Permanent link"> #</a></h3>
+<p>This is the Open Observatory data processing pipeline. Actually, two of them.</p>
+<p>The legacy one is based on the <a href="https://github.com/spotify/luigi">luigi workflow engine</a>
+and described below.</p>
+<p>The modern one is based on the <a href="https://airflow.incubator.apache.org/">Apache Airflow</a> and it's described in <a href="docs/pipeline-16.10.md">docs</a>.</p>
+<h4 id="setup">Setup<a class="headerlink" href="#setup" title="Permanent link"> #</a></h4>
+<p>Edit the <code>client.cfg</code> based on <code>client.cfg.example</code>. See the
+<a href="#configuration">configuration</a> section for more information on how to
+configure the data processing pipeline.</p>
+<p>Install also all the python requirements in <code>requirements.txt</code>.</p>
+<p>Install or build
+<a href="http://pyyaml.org/wiki/PyYAML#DownloadandInstallation">PyYAML</a> with C
+bindings.</p>
+<p><em>Note</em>: You should not use more than 1 worker (luigi <code>--workers</code> option) per core
+otherwise you could be wasting a bunch of CPU time in context switching.</p>
+<h4 id="how-to-run-the-pipeline-tasks">How to run the pipeline tasks<a class="headerlink" href="#how-to-run-the-pipeline-tasks" title="Permanent link"> #</a></h4>
+<p>Ensure that the <code>pipeline</code> module is within your <code>sys.path</code>. This can be done
+by exporting the <code>PYTHONPATH</code> environment variable to the directory where
+ooni-pipeline is copied to.</p>
+<h5 id="daily-workflow">Daily workflow<a class="headerlink" href="#daily-workflow" title="Permanent link"> #</a></h5>
+<p>This <code>daily_workflow</code> is the main workflow that consists of the following steps:</p>
+<ul>
+<li>
+<p>Performs normalisation of the reports to adhere to the 0.2.0 data format and
+  converts them to JSON (<code>NormaliseReport</code>).</p>
+</li>
+<li>
+<p>Performs sanitisation of the reports that contain private bridge addresses
+  (<code>SanitiseReport</code>).</p>
+</li>
+<li>
+<p>Inserts the measurements inside of the postgresql <code>metrics-table</code>
+  (<code>InsertMeasurementsIntoPostgres</code>).</p>
+</li>
+</ul>
+<p>The dependency graph is built from a master task called <code>ListReportsAndRun</code>
+that takes as arguments:</p>
+<ul>
+<li>
+<p><code>date_interval</code> the range of dates that should be operated on</p>
+</li>
+<li>
+<p><code>task</code> the name of the task that should be run (if you choose to run
+  <code>SanitiseReport</code> only <code>NormaliseReport</code> will be run, while
+  <code>InsertMeasurementsIntoPostgres</code> will run <code>NormaliseReport</code> that in turn runs
+  also <code>SanitiseReport</code>). By default task is set to
+  <code>InsertMeasurementsIntoPostgres</code>.</p>
+</li>
+<li>
+<p><code>test_names</code> a space separated list of test names that the task should
+  operate on.</p>
+</li>
+</ul>
+<p>It is possible to specify an optional boolean parameter with the
+<code>--update-views true</code> command line argument to indicate that the materialised
+views should also be updated. To learn how to generate the materialised views
+see below.</p>
+<p>Here is an example of how to run the daily workflow:</p>
+<div class="codehilite"><pre><span></span>luigi --module pipeline.batch.daily_workflow ListReportsAndRun --task NoramliseReport --test-names &#39;http_requests dns_consistency&#39; --date-interval 2016-01-01-2016-02-01 --workers 10
+</pre></div>
+
+
+<p>To generate the materialised views the <code>sql_tasks</code> module shall be used. In here there are two main tasks:</p>
+<ul>
+<li>
+<p><code>CreateMaterialisedViews</code> is used to create the materialised views used to
+  count the number of blockpages detected and the number of identified vendors.</p>
+</li>
+<li>
+<p><code>CreateIndexes</code> is used to create database indexes on certain keys.</p>
+</li>
+</ul>
+<p>To create indexes run:</p>
+<div class="codehilite"><pre><span></span>luigi --module pipeline.batch.sql_tasks CreateIndexes
+</pre></div>
+
+
+<p>To create the materialised views run:</p>
+<div class="codehilite"><pre><span></span>luigi --module pipeline.batch.sql_tasks CreateMaterialisedViews
+</pre></div>
+
+
+<h4 id="domain-intelligence">Domain intelligence<a class="headerlink" href="#domain-intelligence" title="Permanent link"> #</a></h4>
+<p>These tasks are used to update the tables related to the categories of domains being tested. Currently we support extracting the categories for the urls in the citizenlab repository.</p>
+<p>Moreover there are also tasks in here related to updating information pertaining to ASNs.</p>
+<p>To update the citizen-lab categories of URLs you shall run:</p>
+<div class="codehilite"><pre><span></span>luigi --module pipeline.batch.domain_intelligence InsertCitizenLabURLS
+</pre></div>
+
+
+<p>To update the ASN information run:</p>
+<div class="codehilite"><pre><span></span>luigi --module pipeline.batch.domain_intelligence UpdateASNPostgres
+</pre></div>
+
+
+<h4 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link"> #</a></h4>
+<p>Before running the pipeline you should configure it by editing the
+<code>client.cfg</code> file. An example configuration file is provided inside of
+<code>client.cfg.example</code>.</p>
+<p>The files you should probably be editing are the following:</p>
+<h5 id="core">core<a class="headerlink" href="#core" title="Permanent link"> #</a></h5>
+<ul>
+<li>
+<p><strong>tmp_dir</strong> What directory should be used to store temporary files.</p>
+</li>
+<li>
+<p><strong>ssh_private_key_file</strong> What ssh private key shall be used by luigi for sshing into ssh:// machines.</p>
+</li>
+<li>
+<p><strong>ooni_pipeline_path</strong> The location on the ec2 instance where to look for the ooni-pipeline repository.</p>
+</li>
+</ul>
+<h5 id="aws">aws<a class="headerlink" href="#aws" title="Permanent link"> #</a></h5>
+<ul>
+<li>
+<p><strong>access_key_id</strong> This is your AWS access key ID for spinning up EC2 instances.</p>
+</li>
+<li>
+<p><strong>secret_access_key</strong> This is your AWS secret token.</p>
+</li>
+</ul>
+<h5 id="postgres">postgres<a class="headerlink" href="#postgres" title="Permanent link"> #</a></h5>
+<ul>
+<li>
+<p><strong>host</strong> The hostname of your postgres instance.</p>
+</li>
+<li>
+<p><strong>database</strong> The database name.</p>
+</li>
+<li>
+<p><strong>username</strong> The username to use when logging in.</p>
+</li>
+<li>
+<p><strong>password</strong> The password to use when logging in.</p>
+</li>
+<li>
+<p><strong>table</strong> The database table to use for writing measurements to.</p>
+</li>
+</ul>
+<h5 id="ooni">ooni<a class="headerlink" href="#ooni" title="Permanent link"> #</a></h5>
+<ul>
+<li>
+<p><strong>bridge-db-path</strong> A path to where you have a bridge_db.json file that
+    contains mappings between bridge IPs, their hashes and the ring they were
+    taken for (this is required for the sanitisation of bridge_reachability
+    reports).</p>
+</li>
+<li>
+<p><code>raw-reports-dir</code> is the directory where the raw reports are stored. They
+  should be placed inside of directories that contain the date of when the were
+  gathered.
+  An example of the layout of this directory is:</p>
+</li>
+</ul>
+<p><code>yaml
+  ├── 2016-01-31
+  │   ├── 20121209T051845Z-MM-AS9988-dns_consistency-no_report_id-0.1.0-probe.yaml
+  │   ├── 20121209T052108Z-MM-AS9988-dns_consistency-no_report_id-0.1.0-probe.yaml
+  │   ├── 20121209T052248Z-MM-AS9988-dns_consistency-no_report_id-0.1.0-probe.yaml
+  │   ├── 20121209T055811Z-MM-AS9988-dns_consistency-no_report_id-0.1.0-probe.yaml
+  │   ├── 20121209T055945Z-MM-AS9988-dns_consistency-no_report_id-0.1.0-probe.yaml
+  │   └── 20121209T060215Z-MM-AS9988-dns_consistency-no_report_id-0.1.0-probe.yaml
+  ...
+  ├── 2012-12-23
+  │   ├── 20121222T221931Z-RU-AS57668-tcp_connect-no_report_id-0.1.0-probe.yaml
+  │   ├── 20121223T155557Z-RU-AS57668-tcp_connect-no_report_id-0.1.0-probe.yaml
+  │   └── 20121223T160913Z-RU-AS57668-tcp_connect-no_report_id-0.1.0-probe.yaml</code></p>
+<p>The structure of the filenames should be:
+  <code>{timestamp}-{probe_cc}-{probe_asn}-{test_name}-{report_id}-{data_format_version}-probe.yaml</code>.</p>
+<ul>
+<li>
+<p><code>public-dir</code> is the directory where the sanitised reports will end up in
+  nested inside of the sanitised directory.</p>
+</li>
+<li>
+<p><code>private-dir</code> is the directory where the normalised and JSON converted report
+  files will end up in.</p>
+</li>
+</ul>
+<h4 id="rebuild-ooni-pipeline">(Re)build ooni-pipeline<a class="headerlink" href="#rebuild-ooni-pipeline" title="Permanent link"> #</a></h4>
+<p><em>Recommended</em>: Create a virtual Python instance:</p>
+<p><code>virtualenv venv</code></p>
+<h5 id="start-luigi-server-script">Start luigi server (<a href="scripts/start-luigid.sh">script</a>)<a class="headerlink" href="#start-luigi-server-script" title="Permanent link"> #</a></h5>
+<div class="codehilite"><pre><span></span>luigid --address 127.0.0.1 \
+       --port 8082 --pidfile luigid.pid \
+       --logdir luigid.log \
+       --state-path luigi-state.pickle \
+       --background
+</pre></div>
+
+
+<h5 id="run-the-pipeline-tasks">Run the pipeline tasks<a class="headerlink" href="#run-the-pipeline-tasks" title="Permanent link"> #</a></h5>
+<ul>
+<li>Run the main (<code>daily_workflow</code>) pipeline batch tasks since 2012 in weekly
+batches:</li>
+</ul>
+<div class="codehilite"><pre><span></span>for year in `seq -w 12 $(date +%g)`; do
+    for week in `seq -w 1 52`; do
+        PYTHONPATH=<span class="cp">${</span><span class="n">HOME</span><span class="cp">}</span>/ooni-pipeline/ luigi \
+                --module pipeline.batch.daily_workflow ListReportsAndRun \
+                --workers 16 \
+                --ignore-asn &#39;AS2856 AS20712 AS5607&#39; \
+                --parallel-scheduling \
+                --date-interval 20<span class="cp">${</span><span class="n">year</span><span class="cp">}</span>-W<span class="cp">${</span><span class="n">week</span><span class="cp">}</span>
+        echo &quot;[*] Finished processing 20<span class="cp">${</span><span class="n">year</span><span class="cp">}</span>-W<span class="cp">${</span><span class="n">week</span><span class="cp">}</span>&quot;
+    done
+done
+</pre></div>
+
+
+<ul>
+<li>
+<p>Create the database indexes.</p>
+</li>
+<li>
+<p>Create the materialised views.</p>
+</li>
+<li>
+<p>Run the <a href="#domain-intelligence">Domain intelligence</a> batch tasks.</p>
+</li>
+</ul></div>
+<footer class="p-4">
+<div class="container">
+<div class="row">
+<div class="column column-50">
+<div class="pb-2"><img src="https://ooni.org/images/OONI-HorizontalMonochromeInverted.svg" height="32px" /></div>
+<div class="pb-4">Global community measuring internet censorship around the world.</div>
+<div>
+<div>© 2020 Open Observatory of Network Interference (OONI)</div>
+<div><a href="https://github.com/ooni/license">Content available under a Creative Commons license.</a></div>
+</div>
+</div>
+<div class="column column-50">
+<div class="row">
+<div class="column column-30">
+<div class="footer-section-title">About</div>
+<div class="pt-1"><a href="/about/">OONI</a></div>
+<div class="pt-1"><a href="/about/data-policy/">Data Policy</a></div>
+<div class="pt-1"><a href="https://github.com/ooni/license/tree/master/data">Data License</a></div>
+<div class="pt-1"><a href="/about/#contact">Contact</a></div>
+</div>
+<div class="column column-30">
+<div class="footer-section-title">OONI Probe</div>
+<div class="pt-1"><a href="https://ooni.org/install/">Install</a></div>
+<div class="pt-1"><a href="https://ooni.org/nettest/">Tests</a></div>
+<div class="pt-1"><a href="https://github.com/ooni">Source code</a></div>
+<div class="pt-1">
+<a href="https://api.ooni.io/">API</a>
+</div>
+</div>
+<div class="column column-30">
+<div class="footer-section-title">Updates</div>
+<div class="pt-1">
+<a href="/post/">Blog</a>
+</div>
+<div class="pt-1"><a href="https://lists.torproject.org/cgi-bin/mailman/listinfo/ooni-talk">Mailing list</a></div>
+<div class="pt-1"><a href="https://slack.ooni.org/">Slack</a></div>
+<ul class="pt-1 footer-links-social"></ul>
+</div>
+</div>
+</div>
+</div>
+</div>
+</footer></body></html>
